@@ -1056,15 +1056,15 @@ static int dwc3_gadget_ep_disable(struct usb_ep *ep)
 					dep->name))
 		return 0;
 
-	pm_runtime_get_sync(dwc->dev);
+	pm_runtime_get_sync(dwc->sysdev);
 	spin_lock_irqsave(&dwc->lock, flags);
 	ret = __dwc3_gadget_ep_disable(dep);
 	dbg_event(dep->number, "DISABLE", ret);
 	dbg_event(dep->number, "MISSEDISOCPKTS", dep->missed_isoc_packets);
 	dep->missed_isoc_packets = 0;
 	spin_unlock_irqrestore(&dwc->lock, flags);
-	pm_runtime_mark_last_busy(dwc->dev);
-	pm_runtime_put_sync_autosuspend(dwc->dev);
+	pm_runtime_mark_last_busy(dwc->sysdev);
+	pm_runtime_put_sync_autosuspend(dwc->sysdev);
 
 	return ret;
 }

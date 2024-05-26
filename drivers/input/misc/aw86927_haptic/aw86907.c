@@ -1478,7 +1478,6 @@ static int aw86907_haptic_rtp_play(struct aw86907 *aw86907)
 			buf_len = read_rb(aw86907_rtp->data,  period_size);
 			aw86907_i2c_writes(aw86907, AW86907_REG_RTPDATA,
 					  aw86907_rtp->data, buf_len);
-			aw86907->rtp_cnt += buf_len;
 			if (buf_len < period_size) {
 				aw_info("%s: custom rtp update complete\n", __func__);
 				aw86907->rtp_cnt = 0;
@@ -4122,7 +4121,6 @@ irqreturn_t aw86907_irq(int irq, void *data)
 						AW86907_REG_RTPDATA,
 						aw86907_rtp->data,
 						buf_len);
-				aw86907->rtp_cnt += buf_len;
 				if (buf_len < period_size) {
 					aw_info("%s: rtp update complete\n",
 						__func__);

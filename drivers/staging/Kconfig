@@ -88,8 +88,6 @@ source "drivers/staging/unisys/Kconfig"
 
 source "drivers/staging/rtmm/Kconfig"
 
-source "drivers/staging/ktrace/Kconfig"
-
 source "drivers/staging/clocking-wizard/Kconfig"
 
 source "drivers/staging/fbtft/Kconfig"
@@ -133,7 +131,5 @@ source "drivers/staging/erofs/Kconfig"
 source "drivers/staging/misysinfofreader/Kconfig"
 
 source "drivers/staging/kperfevents/Kconfig"
-
-source "drivers/staging/cam-reclaim/Kconfig"
 
 endif # STAGING

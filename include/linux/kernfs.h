@@ -17,7 +17,6 @@
 #include <linux/atomic.h>
 #include <linux/uidgid.h>
 #include <linux/wait.h>
-#include <linux/rwsem.h>
 #include <linux/android_kabi.h>
 
 struct file;

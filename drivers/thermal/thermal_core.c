@@ -23,6 +23,10 @@
 #include <net/genetlink.h>
 #include <linux/suspend.h>
 
+#ifdef CONFIG_DRM
+#include <drm/drm_notifier_mi.h>
+#endif
+
 #define CREATE_TRACE_POINTS
 #include <trace/events/thermal.h>
 
@@ -52,9 +56,6 @@ static bool power_off_triggered;
 static struct thermal_governor *def_governor;
 
 static struct workqueue_struct *thermal_passive_wq;
-
-#ifdef CONFIG_DRM
-#endif
 
 /*
  * Governor section: set of functions to handle thermal governors
@@ -1691,6 +1692,9 @@ static int __init thermal_init(void)
 	if (result)
 		pr_warn("Thermal: Can not register suspend notifier, return %d\n",
 			result);
+
+#ifdef CONFIG_DRM
+#endif
 
 	return 0;
 

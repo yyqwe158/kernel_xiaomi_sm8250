@@ -36,7 +36,7 @@
 #include "aw86927.h"
 #include "aw86907.h"
 
-#define AW_DRIVER_VERSION		"v0.5.1.5"
+#define AW_DRIVER_VERSION		"v0.5.1.3"
 
 /******************************************************
  *
@@ -257,7 +257,7 @@ int CUSTOME_WAVE_ID;
  * i2c read/write
  *
  ******************************************************/
-int aw_i2c_read(struct awinic *awinic,
+static int aw_i2c_read(struct awinic *awinic,
 		unsigned char reg_addr, unsigned char *reg_data)
 {
 	int ret = -1;
@@ -279,7 +279,7 @@ int aw_i2c_read(struct awinic *awinic,
 	return ret;
 }
 
-int aw_i2c_write(struct awinic *awinic,
+static int aw_i2c_write(struct awinic *awinic,
 		 unsigned char reg_addr, unsigned char reg_data)
 {
 	int ret = -1;
@@ -373,7 +373,6 @@ static int aw_hw_reset(struct awinic *awinic)
 {
 	int rc = 0;
 
-	aw_info("%s enter\n", __func__);
 	if (!awinic->enable_pin_control) {
 		if (awinic && gpio_is_valid(awinic->reset_gpio)) {
 			gpio_set_value_cansleep(awinic->reset_gpio, 0);
@@ -403,6 +402,7 @@ static int aw_read_chipid(struct awinic *awinic, unsigned int *reg_val)
 {
 	unsigned char value[2] = {0};
 	unsigned char chipid_addr[2] = {AW_REG_IDH, AW_REG_IDL};
+	unsigned char i = 0;
 	int ret = -1;
 
 	aw_info("%s enter!\n", __func__);
@@ -424,16 +424,14 @@ static int aw_read_chipid(struct awinic *awinic, unsigned int *reg_val)
 		return 0;
 	}
 	/* try to read aw86927 chip id */
-	aw_i2c_read(awinic, chipid_addr[0], &value[0]);
-	if (value[0] == 0x92) {
-		if (aw86927_check_qualify(awinic)) {
-			aw_err("%s:unqualified chip!\n", __func__);
+	for (i = 0; i < 2; i++) {
+		ret = aw_i2c_read(awinic, chipid_addr[i], &value[i]);
+		if (ret < 0)
 			return ret;
-		}
 	}
-	aw_i2c_read(awinic, chipid_addr[1], &value[1]);
 	*reg_val = value[0] << 8 | value[1];
 	return 0;
+
 }
 
 static int aw_parse_chipid(struct awinic *awinic)
@@ -746,6 +744,13 @@ static int aw_i2c_probe(struct i2c_client *i2c,
 		awinic->aw86927->i2c = awinic->i2c;
 		awinic->aw86927->reset_gpio = awinic->reset_gpio;
 		awinic->aw86927->irq_gpio = awinic->irq_gpio;
+		/* chip qualify */
+#ifdef AW_CHECK_QUAL
+		if (aw86927_check_qualify(awinic->aw86927)) {
+			aw_err("%s:unqualified chip!\n", __func__);
+			goto err_aw86927_check_qualify;
+		}
+#endif
 		/* aw86927 rst & int */
 		if (np) {
 			ret = aw86927_parse_dt(awinic->aw86927, &i2c->dev, np);
@@ -971,6 +976,9 @@ err_aw86927_sysfs:
 			      awinic->aw86927);
 err_aw86927_irq:
 err_aw86927_parse_dt:
+#ifdef AW_CHECK_QUAL
+err_aw86927_check_qualify:
+#endif
 	if (awinic->name == AW86927) {
 		devm_kfree(&i2c->dev, awinic->aw86927);
 		awinic->aw86927 = NULL;

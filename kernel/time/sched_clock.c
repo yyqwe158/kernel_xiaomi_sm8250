@@ -304,8 +304,6 @@ void sched_clock_resume(void)
 
 	hrtimer_start(&sched_clock_timer, cd.wrap_kt, HRTIMER_MODE_REL);
 	rd->read_sched_clock = cd.actual_read_sched_clock;
-
-	update_sched_clock();
 }
 
 static struct syscore_ops sched_clock_ops = {

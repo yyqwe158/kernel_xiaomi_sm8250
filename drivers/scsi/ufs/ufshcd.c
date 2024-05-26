@@ -481,8 +481,10 @@ static int ufshcd_disable_clocks(struct ufs_hba *hba,
 				 bool is_gating_context);
 static int ufshcd_disable_clocks_keep_link_active(struct ufs_hba *hba,
 					      bool is_gating_context);
+
 static void ufshcd_hold_all(struct ufs_hba *hba);
 static void ufshcd_release_all(struct ufs_hba *hba);
+
 static int ufshcd_set_vccq_rail_unused(struct ufs_hba *hba, bool unused);
 static inline void ufshcd_add_delay_before_dme_cmd(struct ufs_hba *hba);
 static inline void ufshcd_save_tstamp_of_last_dme_cmd(struct ufs_hba *hba);
@@ -2715,6 +2717,7 @@ static void ufshcd_exit_clk_gating(struct ufs_hba *hba)
  *
  * Return 0 on success, non-zero on failure.
  */
+
 static int ufshcd_hibern8_hold(struct ufs_hba *hba, bool async)
 {
 	int rc = 0;
@@ -3533,8 +3536,8 @@ void ufshcd_prepare_utp_scsi_cmd_upiu(struct ufshcd_lrb *lrbp, u32 upiu_flags)
 	ucd_req_ptr->header.dword_0 = UPIU_HEADER_DWORD(
 				UPIU_TRANSACTION_COMMAND, upiu_flags,
 				lrbp->lun, lrbp->task_tag);
-	ucd_req_ptr->header.dword_1 = UPIU_HEADER_DWORD(
-				UPIU_COMMAND_SET_TYPE_SCSI, 0, 0, 0);
+	ucd_req_ptr->header.dword_1 =
+		UPIU_HEADER_DWORD(UPIU_COMMAND_SET_TYPE_SCSI, 0, 0, 0);
 
 	/* Total EHS length and Data segment length will be zero */
 	ucd_req_ptr->header.dword_2 = 0;
@@ -3657,6 +3660,7 @@ static int ufshcd_comp_scsi_upiu(struct ufs_hba *hba, struct ufshcd_lrb *lrbp)
 		ret = ufshcd_prepare_req_desc_hdr(hba, lrbp,
 				&upiu_flags, lrbp->cmd->sc_data_direction);
 		ufshcd_prepare_utp_scsi_cmd_upiu(lrbp, upiu_flags);
+
 	} else {
 		ret = -EINVAL;
 	}
@@ -3913,6 +3917,7 @@ static int ufshcd_queuecommand(struct Scsi_Host *host, struct scsi_cmnd *cmd)
 
 	/* issue command to the controller */
 	ufs_spin_lock_irqsave(hba->host->host_lock, flags);
+
 	ufshcd_vops_setup_xfer_req(hba, tag, (lrbp->cmd ? true : false));
 
 	err = ufshcd_send_command(hba, tag);
@@ -4070,7 +4075,6 @@ static int ufshcd_wait_for_dev_cmd(struct ufs_hba *hba,
 
 	if (err)
 		ufsdbg_set_err_state(hba);
-
 	return err;
 }
 
@@ -4705,15 +4709,6 @@ int ufshcd_read_device_desc(struct ufs_hba *hba, u8 *buf, u32 size)
 
 int ufshcd_read_health_desc(struct ufs_hba *hba, u8 *buf, u32 size)
 {
-	return ufshcd_read_desc(hba, QUERY_DESC_IDN_HEALTH, 0, buf, size);
-}
-
-int ufshcd_get_hynix_hr(struct scsi_device *sdev, u8 *buf, u32 size)
-{
-	struct ufs_hba *hba;
-
-	hba = shost_priv(sdev->host);
-	size = QUERY_DESC_HEALTH_DEF_SIZE;
 	return ufshcd_read_desc(hba, QUERY_DESC_IDN_HEALTH, 0, buf, size);
 }
 
@@ -6071,8 +6066,9 @@ static int ufshcd_link_startup(struct ufs_hba *hba)
 		ufshcd_vops_link_startup_notify(hba, PRE_CHANGE);
 
 		ret = ufshcd_dme_link_startup(hba);
-		if (ret)
+		if (ret){
 			ufshcd_update_error_stats(hba, UFS_ERR_LINKSTARTUP);
+		}
 
 		/* check if device is detected by inter-connect layer */
 		if (!ret && !ufshcd_is_device_present(hba)) {
@@ -6532,8 +6528,9 @@ ufshcd_transfer_rsp_status(struct ufs_hba *hba, struct ufshcd_lrb *lrbp)
 	}
 
 	if ((host_byte(result) == DID_ERROR) ||
-	    (host_byte(result) == DID_ABORT))
+	    (host_byte(result) == DID_ABORT)) {
 		ufsdbg_set_err_state(hba);
+	}
 
 	return result;
 }
@@ -8639,7 +8636,6 @@ static int ufs_get_device_desc(struct ufs_hba *hba,
 
 	model_index = desc_buf[DEVICE_DESC_PARAM_PRDCT_NAME];
 
-
 	/*if ((dev_desc->wmanufacturerid == UFS_VENDOR_TOSHIBA &&
 	     dev_desc->wspecversion >= 0x300 &&
 	     hba->desc_size.dev_desc >= 0x59)) {
@@ -8651,32 +8647,17 @@ static int ufs_get_device_desc(struct ufs_hba *hba,
 			desc_buf[DEVICE_DESC_PARAM_EXT_UFS_FEATURE_SUP + 2]
 								<< 8 |
 			desc_buf[DEVICE_DESC_PARAM_EXT_UFS_FEATURE_SUP + 3];
-		hba->dev_info.b_wb_buffer_type =
-			desc_buf[DEVICE_DESC_PARAM_WB_TYPE];
 
-		if (hba->dev_info.b_wb_buffer_type)
-			goto skip_unit_desc;
-
-		hba->dev_info.wb_config_lun = false;
-		for (lun = 0; lun < UFS_UPIU_MAX_GENERAL_LUN; lun++) {
-			d_lu_wb_buf_alloc = 0;
-			err = ufshcd_read_unit_desc_param(hba,
-					lun,
-					UNIT_DESC_PARAM_WB_BUF_ALLOC_UNITS,
-					(u8 *)&d_lu_wb_buf_alloc,
-					sizeof(d_lu_wb_buf_alloc));
-
-			if (err)
-				break;
-
-			if (d_lu_wb_buf_alloc) {
+			res = wb_buf[0] << 24 | wb_buf[1] << 16 |
+				wb_buf[2] << 8 | wb_buf[3];
+			if (res) {
 				hba->dev_info.wb_config_lun = true;
 				break;
 			}
 		}
 	}*/
 
-//skip_unit_desc:
+	//skip_unit_desc:
 	/* Zero-pad entire buffer for string termination. */
 	memset(desc_buf, 0, buff_len);
 
@@ -8789,7 +8770,6 @@ static int ufshcd_tune_pa_hibern8time(struct ufs_hba *hba)
 	/* make sure proper unit conversion is applied */
 	tuned_pa_hibern8time = ((max_hibern8_time * HIBERN8TIME_UNIT_US)
 				/ PA_HIBERN8_TIME_UNIT_US);
-
 	ret = ufshcd_dme_set(hba, UIC_ARG_MIB(PA_HIBERN8TIME),
 			     tuned_pa_hibern8time);
 out:
@@ -8814,7 +8794,6 @@ static int ufshcd_quirk_tune_host_pa_tactivate(struct ufs_hba *hba)
 	u32 pa_tactivate, peer_pa_tactivate;
 	u32 pa_tactivate_us, peer_pa_tactivate_us;
 	u8 gran_to_us_table[] = {1, 4, 8, 16, 32, 100};
-	u32 pa_hibern8time_quirk_enabled = hba->dev_quirks & UFS_DEVICE_QUIRK_PA_SYNCLENGTH;
 
 	ret = ufshcd_dme_get(hba, UIC_ARG_MIB(PA_GRANULARITY),
 				  &granularity);
@@ -8862,17 +8841,14 @@ static int ufshcd_quirk_tune_host_pa_tactivate(struct ufs_hba *hba)
 		ret = ufshcd_dme_peer_set(hba, UIC_ARG_MIB(PA_TACTIVATE),
 					  new_peer_pa_tactivate);
 	}
-	if(pa_hibern8time_quirk_enabled){
-		ret=ufshcd_dme_peer_set(hba, UIC_ARG_MIB(0x15D0), 0x4F);  // Synclength G4
-		ret=ufshcd_dme_peer_set(hba, UIC_ARG_MIB(0x1552), 0x4F);  // Synclength G1
-	}
+
 out:
 	return ret;
 }
 
 static void ufshcd_tune_unipro_params(struct ufs_hba *hba)
 {
-	if (ufshcd_is_unipro_pa_params_tuning_req(hba)){
+	if (ufshcd_is_unipro_pa_params_tuning_req(hba)) {
 		ufshcd_tune_pa_tactivate(hba);
 		ufshcd_tune_pa_hibern8time(hba);
 	}
@@ -9005,7 +8981,7 @@ static int ufs_init_serial(struct ufs_hba *hba)
 		goto out;
 
 	for (i = 2; ((i <  str_desc_buf[QUERY_DESC_LENGTH_OFFSET]) && (i < QUERY_DESC_MAX_SIZE / 2)); i += 2) {
-		snprintf(serial+i*2 - 4, 5, "%02x%02x", str_desc_buf[i], str_desc_buf[i+1]);
+		snprintf(serial+i*2 - 4, QUERY_DESC_MAX_SIZE, "%02x%02x", str_desc_buf[i], str_desc_buf[i+1]);
 	}
 	pr_info("SerialNumber:%s\n", serial);
 
@@ -9229,6 +9205,7 @@ reinit:
 	ufs_fixup_device_setup(hba, &card);
 	ufshcd_tune_unipro_params(hba);
 	ufs_init_serial(hba);
+
 	ufshcd_apply_pm_quirks(hba);
 	if (card.wspecversion < 0x300) {
 		ret = ufshcd_set_vccq_rail_unused(hba,
@@ -9337,7 +9314,6 @@ reinit:
 			hba->clk_scaling.is_allowed = true;
 			hba->clk_scaling.is_suspended = false;
 		}
-
 		scsi_scan_host(hba->host);
 		pm_runtime_put_sync(hba->dev);
 	}
@@ -9349,7 +9325,6 @@ reinit:
 	ufshcd_set_auto_hibern8_timer(hba);
 
 out:
-
 	if (ret) {
 		ufshcd_set_ufs_dev_poweroff(hba);
 		ufshcd_set_link_off(hba);
@@ -10664,8 +10639,9 @@ enable_gating:
 out:
 	hba->pm_op_in_progress = 0;
 
-	if (ret)
+	if (ret) {
 		ufshcd_update_error_stats(hba, UFS_ERR_SUSPEND);
+	}
 
 	return ret;
 }
@@ -10814,8 +10790,9 @@ disable_vreg:
 out:
 	hba->pm_op_in_progress = 0;
 
-	if (ret)
+	if (ret) {
 		ufshcd_update_error_stats(hba, UFS_ERR_RESUME);
+	}
 
 	return ret;
 }

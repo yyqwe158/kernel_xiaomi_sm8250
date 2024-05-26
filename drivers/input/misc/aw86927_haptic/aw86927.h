@@ -349,15 +349,11 @@ struct aw86927_container {
 #define AW86927_REG_IDH			(0x57)
 #define AW86927_REG_IDL			(0x58)
 #define AW86927_REG_TMCFG		(0x5B)
-#define AW86927_REG_EFCFG1		(0x5C)
 #define AW86927_REG_EFCFG6		(0x61)
-#define AW86927_REG_EFCFG7		(0x62)
-#define AW86927_REG_EFCFG8		(0x63)
 #define AW86927_REG_TESTR		(0x65)
 #define AW86927_REG_ANACFG1		(0x66)
 #define AW86927_REG_ANACFG2		(0x67)
 #define AW86927_REG_ANACFG7		(0x6C)
-#define AW86927_REG_ANACFG11		(0x70)
 #define AW86927_REG_ANACFG12		(0x71)
 #define AW86927_REG_ANACFG13		(0x72)
 #define AW86927_REG_ANACFG15		(0x74)
@@ -726,7 +722,6 @@ struct aw86927_container {
 
 /* DETCFG1: reg 0x4D RW */
 #define AW86927_BIT_DETCFG1_VBAT_REF_MASK		(~(7<<4))
-#define AW86927_BIT_DETCFG1_VBAT_REF_4P2V		(3<<4)
 #define AW86927_BIT_DETCFG1_ADC_FS_MASK			(~(3<<2))
 #define AW86927_BIT_DETCFG1_ADC_FS_192KHZ		(0<<2)
 #define AW86927_BIT_DETCFG1_ADC_FS_96KHZ		(1<<2)
@@ -768,26 +763,13 @@ struct aw86927_container {
 #define AW86927_BIT_TMCFG_TM_UNLOCK			(0x7d)
 #define AW86927_BIT_TMCFG_TM_LOCK			(0x00)
 
-/* TMCFG: reg 0x5C RW */
-#define AW86927_BIT_EFCFG1_INIT_VAL			(0x09)
-
 /* EFCFG6: reg 0x61 */
 #define AW86927_BIT_EFCFG6_MASK				(0x80)
-
-/* EFCFG7: reg 0x62 */
-#define AW86927_BIT_EFCFG7_RESERVED_MASK		(~(0x01<<7))
-
-/* EFCFG8: reg 0x63 */
-#define AW86927_BIT_EFCFG8_EF_TRM_BST_IPEAK_MASK	(~(0xF0<<0))
-
 /* TESTR: reg 0x65 RO */
 #define AW86927_BIT_TESTR_BST_SS_FINISH			(8<<0)
 #define AW86927_BIT_TESTR_BIST_OVP2S			(4<<0)
 #define AW86927_BIT_TESTR_BIST_FAIL			(2<<0)
 #define AW86927_BIT_TESTR_BIST_DONE			(1<<0)
-
-/* ANACFG11: reg 0x70 RW */
-#define AW86927_BIT_ANACFG11_INIT_VAL			(0x0f)
 
 /* ANACFG12: reg 0x71 RW */
 #define AW86927_BIT_ANACFG12_BST_SKIP_MASK		(~(0x01<<7))
@@ -847,5 +829,5 @@ extern irqreturn_t aw86927_irq(int irq, void *data);
 extern struct attribute_group aw86927_vibrator_attribute_group;
 extern int aw86927_parse_dt(struct aw86927 *aw86927, struct device *dev,
 		     struct device_node *np);
-extern int aw86927_check_qualify(struct awinic *awinic);
+extern int aw86927_check_qualify(struct aw86927 *aw86927);
 #endif

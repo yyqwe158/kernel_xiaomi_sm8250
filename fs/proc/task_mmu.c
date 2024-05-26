@@ -1670,7 +1670,6 @@ const struct file_operations proc_pagemap_operations = {
 #endif /* CONFIG_PROC_PAGE_MONITOR */
 
 #ifdef CONFIG_PROCESS_RECLAIM
-
 static BLOCKING_NOTIFIER_HEAD(proc_reclaim_notifier);
 
 int proc_reclaim_notifier_register(struct notifier_block *nb)

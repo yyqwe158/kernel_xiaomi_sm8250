@@ -30,7 +30,6 @@
 #include <linux/compat.h>
 #include <linux/module.h>
 
-
 #include "posix-timers.h"
 
 #define CREATE_TRACE_POINTS
@@ -64,7 +63,6 @@ static struct wakeup_source *ws;
 static struct rtc_timer		rtctimer;
 static struct rtc_device	*rtcdev;
 static DEFINE_SPINLOCK(rtcdev_lock);
-bool alarm_fired;
 
 /**
  * alarmtimer_get_rtcdev - Return selected rtcdevice
@@ -278,7 +276,7 @@ static int alarmtimer_suspend(struct device *dev)
 		if (!next)
 			continue;
 		delta = ktime_sub(next->expires, base->gettime());
-		if (!min || (delta < min)) {
+		if (!min || (delta < min)) {			
 			expires = next->expires;
 			min = delta;
 			type = i;
@@ -896,6 +894,7 @@ static int __init alarmtimer_init(void)
 		error = PTR_ERR(pdev);
 		goto out_drv;
 	}
+	
 	return 0;
 
 out_drv:

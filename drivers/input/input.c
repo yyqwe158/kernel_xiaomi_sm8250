@@ -27,6 +27,9 @@
 #include <linux/device.h>
 #include <linux/mutex.h>
 #include <linux/rcupdate.h>
+#ifdef CONFIG_LAST_TOUCH_EVENTS
+#include <linux/rtc.h>
+#endif
 #include "input-compat.h"
 
 MODULE_AUTHOR("Vojtech Pavlik <vojtech@suse.cz>");
@@ -50,8 +53,73 @@ static DEFINE_MUTEX(input_mutex);
 
 static const struct input_value input_value_sync = { EV_SYN, SYN_REPORT, 1 };
 
+
+#ifdef CONFIG_LAST_TOUCH_EVENTS
+static int input_device_is_touch(struct input_dev *input_dev)
+{
+	unsigned long mask = BIT_MASK(BTN_TOUCH);
+	return ((input_dev->keybit[BIT_WORD(BTN_TOUCH)] & mask) == mask) ? true:false;
+}
+
+static inline void touch_press_release_events_collect(struct input_dev *dev,
+		 unsigned int type, unsigned int code, int value)
+{
+	struct tp_touch_event *touch_event_buf;
+	struct touch_event_info *touch_events;
+
+	if (!dev->touch_events)
+		return;
+
+	touch_events = dev->touch_events;
+
+	pr_debug("type %d, code %d, value %d\n", type, code, value);
+
+	switch(code) {
+		case ABS_MT_SLOT:
+			if (value > TOUCH_MAX_FINGER)
+				value = 0;
+			touch_events->touch_slot = value;
+			break;
+
+		case ABS_MT_TRACKING_ID:
+			touch_event_buf = &touch_events->touch_event_buf[touch_events->touch_event_num];
+			touch_event_buf->finger_num = touch_events->touch_slot;
+
+			if (value != -1 && !(touch_events->finger_bitmap & BIT(touch_events->touch_slot))) {
+				touch_events->finger_bitmap |= BIT(touch_events->touch_slot);
+				touch_event_buf->touch_state = TOUCH_IS_PRESSED;
+				getnstimeofday(&touch_event_buf->touch_time_stamp);
+				touch_events->touch_event_num++;
+				touch_events->touch_is_pressed = true;
+			} else if (value == -1 && (touch_events->finger_bitmap & BIT(touch_events->touch_slot))) {
+				touch_events->finger_bitmap &= ~BIT(touch_events->touch_slot);
+				touch_event_buf->touch_state = TOUCH_IS_RELEASED;
+				getnstimeofday(&touch_event_buf->touch_time_stamp);
+				touch_events->touch_event_num++;
+			}
+
+			if (touch_events->touch_event_num >= TOUCH_EVENT_MAX)
+				touch_events->touch_event_num = 0;
+
+			break;
+
+		case BTN_TOUCH:
+			if (value == 0) {
+				if (touch_events->touch_is_pressed) {
+					touch_events->touch_is_pressed = false;
+				}
+				touch_events->finger_bitmap = 0;
+			}
+			break;
+
+	}
+
+	return;
+}
+#endif
+
 static inline int is_event_supported(unsigned int code,
-				unsigned long *bm, unsigned int max)
+				     unsigned long *bm, unsigned int max)
 {
 	return code <= max && test_bit(code, bm);
 }
@@ -75,11 +143,11 @@ static int input_defuzz_abs_event(int value, int old_val, int fuzz)
 static void input_start_autorepeat(struct input_dev *dev, int code)
 {
 	if (test_bit(EV_REP, dev->evbit) &&
-		dev->rep[REP_PERIOD] && dev->rep[REP_DELAY] &&
-		dev->timer.function) {
+	    dev->rep[REP_PERIOD] && dev->rep[REP_DELAY] &&
+	    dev->timer.function) {
 		dev->repeat_key = code;
 		mod_timer(&dev->timer,
-			jiffies + msecs_to_jiffies(dev->rep[REP_DELAY]));
+			  jiffies + msecs_to_jiffies(dev->rep[REP_DELAY]));
 	}
 }
 
@@ -167,7 +235,7 @@ static void input_pass_values(struct input_dev *dev,
 }
 
 static void input_pass_event(struct input_dev *dev,
-				unsigned int type, unsigned int code, int value)
+			     unsigned int type, unsigned int code, int value)
 {
 	struct input_value vals[] = { { type, code, value } };
 
@@ -187,7 +255,7 @@ static void input_repeat_key(struct timer_list *t)
 	spin_lock_irqsave(&dev->event_lock, flags);
 
 	if (test_bit(dev->repeat_key, dev->key) &&
-		is_event_supported(dev->repeat_key, dev->keybit, KEY_MAX)) {
+	    is_event_supported(dev->repeat_key, dev->keybit, KEY_MAX)) {
 		struct input_value vals[] =  {
 			{ EV_KEY, dev->repeat_key, 2 },
 			input_value_sync
@@ -302,7 +370,7 @@ static int input_get_disposition(struct input_dev *dev,
 
 	case EV_SW:
 		if (is_event_supported(code, dev->swbit, SW_MAX) &&
-			!!test_bit(code, dev->sw) != !!value) {
+		    !!test_bit(code, dev->sw) != !!value) {
 
 			__change_bit(code, dev->sw);
 			disposition = INPUT_PASS_TO_HANDLERS;
@@ -329,7 +397,7 @@ static int input_get_disposition(struct input_dev *dev,
 
 	case EV_LED:
 		if (is_event_supported(code, dev->ledbit, LED_MAX) &&
-			!!test_bit(code, dev->led) != !!value) {
+		    !!test_bit(code, dev->led) != !!value) {
 
 			__change_bit(code, dev->led);
 			disposition = INPUT_PASS_TO_ALL;
@@ -367,7 +435,7 @@ static int input_get_disposition(struct input_dev *dev,
 }
 
 static void input_handle_event(struct input_dev *dev,
-				unsigned int type, unsigned int code, int value)
+			       unsigned int type, unsigned int code, int value)
 {
 	int disposition = input_get_disposition(dev, type, code, &value);
 
@@ -433,7 +501,7 @@ static void input_handle_event(struct input_dev *dev,
  * axis, etc.
  */
 void input_event(struct input_dev *dev,
-		unsigned int type, unsigned int code, int value)
+		 unsigned int type, unsigned int code, int value)
 {
 	unsigned long flags;
 
@@ -442,6 +510,9 @@ void input_event(struct input_dev *dev,
 		spin_lock_irqsave(&dev->event_lock, flags);
 		input_handle_event(dev, type, code, value);
 		spin_unlock_irqrestore(&dev->event_lock, flags);
+#ifdef CONFIG_LAST_TOUCH_EVENTS
+		touch_press_release_events_collect(dev, type, code, value);
+#endif
 	}
 }
 EXPORT_SYMBOL(input_event);
@@ -504,7 +575,7 @@ void input_alloc_absinfo(struct input_dev *dev)
 EXPORT_SYMBOL(input_alloc_absinfo);
 
 void input_set_abs_params(struct input_dev *dev, unsigned int axis,
-				int min, int max, int fuzz, int flat)
+			  int min, int max, int fuzz, int flat)
 {
 	struct input_absinfo *absinfo;
 
@@ -548,7 +619,7 @@ int input_grab_device(struct input_handle *handle)
 
 	rcu_assign_pointer(dev->grab, handle);
 
-out:
+ out:
 	mutex_unlock(&dev->mutex);
 	return retval;
 }
@@ -560,7 +631,7 @@ static void __input_release_device(struct input_handle *handle)
 	struct input_handle *grabber;
 
 	grabber = rcu_dereference_protected(dev->grab,
-					lockdep_is_held(&dev->mutex));
+					    lockdep_is_held(&dev->mutex));
 	if (grabber == handle) {
 		rcu_assign_pointer(dev->grab, NULL);
 		/* Make sure input_pass_event() notices that grab is gone */
@@ -628,7 +699,7 @@ int input_open_device(struct input_handle *handle)
 		}
 	}
 
-out:
+ out:
 	mutex_unlock(&dev->mutex);
 	return retval;
 }
@@ -934,11 +1005,11 @@ int input_set_keycode(struct input_dev *dev,
 	 */
 	if (old_keycode > KEY_MAX) {
 		dev_warn(dev->dev.parent ?: &dev->dev,
-			"%s: got too big old keycode %#x\n",
-			__func__, old_keycode);
+			 "%s: got too big old keycode %#x\n",
+			 __func__, old_keycode);
 	} else if (test_bit(EV_KEY, dev->evbit) &&
-			!is_event_supported(old_keycode, dev->keybit, KEY_MAX) &&
-			__test_and_clear_bit(old_keycode, dev->key)) {
+		   !is_event_supported(old_keycode, dev->keybit, KEY_MAX) &&
+		   __test_and_clear_bit(old_keycode, dev->key)) {
 		struct input_value vals[] =  {
 			{ EV_KEY, old_keycode, 0 },
 			input_value_sync
@@ -947,7 +1018,7 @@ int input_set_keycode(struct input_dev *dev,
 		input_pass_values(dev, vals, ARRAY_SIZE(vals));
 	}
 
-out:
+ out:
 	spin_unlock_irqrestore(&dev->event_lock, flags);
 
 	return retval;
@@ -955,7 +1026,7 @@ out:
 EXPORT_SYMBOL(input_set_keycode);
 
 bool input_match_device_id(const struct input_dev *dev,
-				const struct input_device_id *id)
+			   const struct input_device_id *id)
 {
 	if (id->flags & INPUT_DEVICE_ID_MATCH_BUS)
 		if (id->bustype != dev->id.bustype)
@@ -974,15 +1045,15 @@ bool input_match_device_id(const struct input_dev *dev,
 			return false;
 
 	if (!bitmap_subset(id->evbit, dev->evbit, EV_MAX) ||
-		!bitmap_subset(id->keybit, dev->keybit, KEY_MAX) ||
-		!bitmap_subset(id->relbit, dev->relbit, REL_MAX) ||
-		!bitmap_subset(id->absbit, dev->absbit, ABS_MAX) ||
-		!bitmap_subset(id->mscbit, dev->mscbit, MSC_MAX) ||
-		!bitmap_subset(id->ledbit, dev->ledbit, LED_MAX) ||
-		!bitmap_subset(id->sndbit, dev->sndbit, SND_MAX) ||
-		!bitmap_subset(id->ffbit, dev->ffbit, FF_MAX) ||
-		!bitmap_subset(id->swbit, dev->swbit, SW_MAX) ||
-		!bitmap_subset(id->propbit, dev->propbit, INPUT_PROP_MAX)) {
+	    !bitmap_subset(id->keybit, dev->keybit, KEY_MAX) ||
+	    !bitmap_subset(id->relbit, dev->relbit, REL_MAX) ||
+	    !bitmap_subset(id->absbit, dev->absbit, ABS_MAX) ||
+	    !bitmap_subset(id->mscbit, dev->mscbit, MSC_MAX) ||
+	    !bitmap_subset(id->ledbit, dev->ledbit, LED_MAX) ||
+	    !bitmap_subset(id->sndbit, dev->sndbit, SND_MAX) ||
+	    !bitmap_subset(id->ffbit, dev->ffbit, FF_MAX) ||
+	    !bitmap_subset(id->swbit, dev->swbit, SW_MAX) ||
+	    !bitmap_subset(id->propbit, dev->propbit, INPUT_PROP_MAX)) {
 		return false;
 	}
 
@@ -997,7 +1068,7 @@ static const struct input_device_id *input_match_device(struct input_handler *ha
 
 	for (id = handler->id_table; id->flags || id->driver_info; id++) {
 		if (input_match_device_id(dev, id) &&
-			(!handler->match || handler->match(handler, dev))) {
+		    (!handler->match || handler->match(handler, dev))) {
 			return id;
 		}
 	}
@@ -1017,7 +1088,7 @@ static int input_attach_handler(struct input_dev *dev, struct input_handler *han
 	error = handler->connect(handler, dev, id);
 	if (error && error != -ENODEV)
 		pr_err("failed to attach handler %s to device %s, error: %d\n",
-			handler->name, kobject_name(&dev->dev.kobj), error);
+		       handler->name, kobject_name(&dev->dev.kobj), error);
 
 	return error;
 }
@@ -1131,7 +1202,7 @@ static void input_seq_print_bitmap(struct seq_file *seq, const char *name,
 
 	for (i = BITS_TO_LONGS(max) - 1; i >= 0; i--) {
 		if (input_bits_to_string(buf, sizeof(buf),
-					bitmap[i], skip_empty)) {
+					 bitmap[i], skip_empty)) {
 			skip_empty = false;
 			seq_printf(seq, "%s%s", buf, i > 0 ? " " : "");
 		}
@@ -1153,7 +1224,7 @@ static int input_devices_seq_show(struct seq_file *seq, void *v)
 	struct input_handle *handle;
 
 	seq_printf(seq, "I: Bus=%04x Vendor=%04x Product=%04x Version=%04x\n",
-		dev->id.bustype, dev->id.vendor, dev->id.product, dev->id.version);
+		   dev->id.bustype, dev->id.vendor, dev->id.product, dev->id.version);
 
 	seq_printf(seq, "N: Name=\"%s\"\n", dev->name ? dev->name : "");
 	seq_printf(seq, "P: Phys=%s\n", dev->phys ? dev->phys : "");
@@ -1275,6 +1346,53 @@ static const struct file_operations input_handlers_fileops = {
 	.release	= seq_release,
 };
 
+#ifdef CONFIG_LAST_TOUCH_EVENTS
+static int last_touch_events_show(struct seq_file *seq, void *v)
+{
+	struct input_dev *dev = container_of(v, struct input_dev, node);
+	int i = 0;
+	struct rtc_time tm;
+
+	if (!input_device_is_touch(dev) || !dev->touch_events)
+		return 0;
+
+	seq_printf(seq, "Name=\"%s\"\n", dev->name ? dev->name : "");
+
+	for (i = 0; i < TOUCH_EVENT_MAX; i++) {
+		if (dev->touch_events->touch_event_buf[i].touch_state == TOUCH_IS_INIT)
+			continue;
+		rtc_time_to_tm(dev->touch_events->touch_event_buf[i].touch_time_stamp.tv_sec, &tm);
+		seq_printf(seq, "%d-%02d-%02d %02d:%02d:%02d.%09lu UTC Finger (%2d) %s\n",
+			tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday,
+			tm.tm_hour, tm.tm_min, tm.tm_sec,
+			dev->touch_events->touch_event_buf[i].touch_time_stamp.tv_nsec,
+			dev->touch_events->touch_event_buf[i].finger_num,
+			dev->touch_events->touch_event_buf[i].touch_state == TOUCH_IS_PRESSED ? "P" : "R");
+	}
+	return 0;
+}
+
+static const struct seq_operations input_last_touch_events_seq_ops = {
+	.start	= input_devices_seq_start,
+	.next	= input_devices_seq_next,
+	.stop	= input_seq_stop,
+	.show	= last_touch_events_show,
+};
+
+static int input_last_touch_events_open(struct inode *inode, struct file *file)
+{
+	return seq_open(file, &input_last_touch_events_seq_ops);
+}
+
+
+static const struct file_operations input_last_touch_events_fileops = {
+	.open		= input_last_touch_events_open,
+	.read		= seq_read,
+	.llseek		= seq_lseek,
+	.release	= seq_release,
+};
+#endif
+
 static int __init input_proc_init(void)
 {
 	struct proc_dir_entry *entry;
@@ -1284,26 +1402,35 @@ static int __init input_proc_init(void)
 		return -ENOMEM;
 
 	entry = proc_create("devices", 0, proc_bus_input_dir,
-			&input_devices_fileops);
+			    &input_devices_fileops);
 	if (!entry)
 		goto fail1;
 
 	entry = proc_create("handlers", 0, proc_bus_input_dir,
-			&input_handlers_fileops);
+			    &input_handlers_fileops);
 	if (!entry)
 		goto fail2;
+#ifdef CONFIG_LAST_TOUCH_EVENTS
+	entry = proc_create("last_touch_events", 0, proc_bus_input_dir,
+				&input_last_touch_events_fileops);
+	if (!entry)
+		goto fail3;
+#endif
 
 	return 0;
-
-fail2:
-	remove_proc_entry("devices", proc_bus_input_dir);
-fail1:
-	remove_proc_entry("bus/input", NULL);
+#ifdef CONFIG_LAST_TOUCH_EVENTS
+ fail3: remove_proc_entry("handlers", proc_bus_input_dir);
+#endif
+ fail2:	remove_proc_entry("devices", proc_bus_input_dir);
+ fail1: remove_proc_entry("bus/input", NULL);
 	return -ENOMEM;
 }
 
 static void input_proc_exit(void)
 {
+#ifdef CONFIG_LAST_TOUCH_EVENTS
+	remove_proc_entry("last_touch_events", proc_bus_input_dir);
+#endif
 	remove_proc_entry("devices", proc_bus_input_dir);
 	remove_proc_entry("handlers", proc_bus_input_dir);
 	remove_proc_entry("bus/input", NULL);
@@ -1317,13 +1444,13 @@ static inline void input_proc_exit(void) { }
 
 #define INPUT_DEV_STRING_ATTR_SHOW(name)				\
 static ssize_t input_dev_show_##name(struct device *dev,		\
-				struct device_attribute *attr,	\
-				char *buf)				\
+				     struct device_attribute *attr,	\
+				     char *buf)				\
 {									\
 	struct input_dev *input_dev = to_input_dev(dev);		\
 									\
 	return scnprintf(buf, PAGE_SIZE, "%s\n",			\
-			input_dev->name ? input_dev->name : "");	\
+			 input_dev->name ? input_dev->name : "");	\
 }									\
 static DEVICE_ATTR(name, S_IRUGO, input_dev_show_##name, NULL)
 
@@ -1332,8 +1459,8 @@ INPUT_DEV_STRING_ATTR_SHOW(phys);
 INPUT_DEV_STRING_ATTR_SHOW(uniq);
 
 static int input_print_modalias_bits(char *buf, int size,
-				char name, unsigned long *bm,
-				unsigned int min_bit, unsigned int max_bit)
+				     char name, unsigned long *bm,
+				     unsigned int min_bit, unsigned int max_bit)
 {
 	int len = 0, i;
 
@@ -1350,9 +1477,9 @@ static int input_print_modalias(char *buf, int size, struct input_dev *id,
 	int len;
 
 	len = snprintf(buf, max(size, 0),
-			"input:b%04Xv%04Xp%04Xe%04X-",
-			id->id.bustype, id->id.vendor,
-			id->id.product, id->id.version);
+		       "input:b%04Xv%04Xp%04Xe%04X-",
+		       id->id.bustype, id->id.vendor,
+		       id->id.product, id->id.version);
 
 	len += input_print_modalias_bits(buf + len, size - len,
 				'e', id->evbit, 0, EV_MAX);
@@ -1380,8 +1507,8 @@ static int input_print_modalias(char *buf, int size, struct input_dev *id,
 }
 
 static ssize_t input_dev_show_modalias(struct device *dev,
-				struct device_attribute *attr,
-				char *buf)
+				       struct device_attribute *attr,
+				       char *buf)
 {
 	struct input_dev *id = to_input_dev(dev);
 	ssize_t len;
@@ -1393,15 +1520,15 @@ static ssize_t input_dev_show_modalias(struct device *dev,
 static DEVICE_ATTR(modalias, S_IRUGO, input_dev_show_modalias, NULL);
 
 static int input_print_bitmap(char *buf, int buf_size, unsigned long *bitmap,
-				int max, int add_cr);
+			      int max, int add_cr);
 
 static ssize_t input_dev_show_properties(struct device *dev,
-				struct device_attribute *attr,
-				char *buf)
+					 struct device_attribute *attr,
+					 char *buf)
 {
 	struct input_dev *input_dev = to_input_dev(dev);
 	int len = input_print_bitmap(buf, PAGE_SIZE, input_dev->propbit,
-				INPUT_PROP_MAX, true);
+				     INPUT_PROP_MAX, true);
 	return min_t(int, len, PAGE_SIZE);
 }
 static DEVICE_ATTR(properties, S_IRUGO, input_dev_show_properties, NULL);
@@ -1448,7 +1575,7 @@ static const struct attribute_group input_dev_id_attr_group = {
 };
 
 static int input_print_bitmap(char *buf, int buf_size, unsigned long *bitmap,
-				int max, int add_cr)
+			      int max, int add_cr)
 {
 	int i;
 	int len = 0;
@@ -1456,7 +1583,7 @@ static int input_print_bitmap(char *buf, int buf_size, unsigned long *bitmap,
 
 	for (i = BITS_TO_LONGS(max) - 1; i >= 0; i--) {
 		len += input_bits_to_string(buf + len, max(buf_size - len, 0),
-					bitmap[i], skip_empty);
+					    bitmap[i], skip_empty);
 		if (len) {
 			skip_empty = false;
 			if (i > 0)
@@ -1478,13 +1605,13 @@ static int input_print_bitmap(char *buf, int buf_size, unsigned long *bitmap,
 
 #define INPUT_DEV_CAP_ATTR(ev, bm)					\
 static ssize_t input_dev_show_cap_##bm(struct device *dev,		\
-				struct device_attribute *attr,	\
-				char *buf)			\
+				       struct device_attribute *attr,	\
+				       char *buf)			\
 {									\
 	struct input_dev *input_dev = to_input_dev(dev);		\
 	int len = input_print_bitmap(buf, PAGE_SIZE,			\
-				input_dev->bm##bit, ev##_MAX,	\
-				true);				\
+				     input_dev->bm##bit, ev##_MAX,	\
+				     true);				\
 	return min_t(int, len, PAGE_SIZE);				\
 }									\
 static DEVICE_ATTR(bm, S_IRUGO, input_dev_show_cap_##bm, NULL)
@@ -1542,7 +1669,7 @@ static void input_dev_release(struct device *device)
  * device bitfields.
  */
 static int input_add_uevent_bm_var(struct kobj_uevent_env *env,
-				const char *name, unsigned long *bitmap, int max)
+				   const char *name, unsigned long *bitmap, int max)
 {
 	int len;
 
@@ -1550,8 +1677,8 @@ static int input_add_uevent_bm_var(struct kobj_uevent_env *env,
 		return -ENOMEM;
 
 	len = input_print_bitmap(&env->buf[env->buflen - 1],
-				sizeof(env->buf) - env->buflen,
-				bitmap, max, false);
+				 sizeof(env->buf) - env->buflen,
+				 bitmap, max, false);
 	if (len >= (sizeof(env->buf) - env->buflen))
 		return -ENOMEM;
 
@@ -1568,8 +1695,8 @@ static int input_add_uevent_modalias_var(struct kobj_uevent_env *env,
 		return -ENOMEM;
 
 	len = input_print_modalias(&env->buf[env->buflen - 1],
-				sizeof(env->buf) - env->buflen,
-				dev, 0);
+				   sizeof(env->buf) - env->buflen,
+				   dev, 0);
 	if (len >= (sizeof(env->buf) - env->buflen))
 		return -ENOMEM;
 
@@ -1812,7 +1939,7 @@ struct input_dev *input_allocate_device(void)
 		INIT_LIST_HEAD(&dev->node);
 
 		dev_set_name(&dev->dev, "input%lu",
-			(unsigned long)atomic_inc_return(&input_no));
+			     (unsigned long)atomic_inc_return(&input_no));
 
 		__module_get(THIS_MODULE);
 	}
@@ -1866,7 +1993,7 @@ struct input_dev *devm_input_allocate_device(struct device *dev)
 	struct input_devres *devres;
 
 	devres = devres_alloc(devm_input_device_release,
-				sizeof(*devres), GFP_KERNEL);
+			      sizeof(*devres), GFP_KERNEL);
 	if (!devres)
 		return NULL;
 
@@ -1932,7 +2059,7 @@ void input_set_timestamp(struct input_dev *dev, ktime_t timestamp)
 	dev->timestamp[INPUT_CLK_MONO] = timestamp;
 	dev->timestamp[INPUT_CLK_REAL] = ktime_mono_to_real(timestamp);
 	dev->timestamp[INPUT_CLK_BOOT] = ktime_mono_to_any(timestamp,
-							TK_OFFS_BOOT);
+							   TK_OFFS_BOOT);
 }
 EXPORT_SYMBOL(input_set_timestamp);
 
@@ -2025,7 +2152,7 @@ static unsigned int input_estimate_events_per_packet(struct input_dev *dev)
 		mt_slots = dev->mt->num_slots;
 	} else if (test_bit(ABS_MT_TRACKING_ID, dev->absbit)) {
 		mt_slots = dev->absinfo[ABS_MT_TRACKING_ID].maximum -
-					dev->absinfo[ABS_MT_TRACKING_ID].minimum + 1,
+			   dev->absinfo[ABS_MT_TRACKING_ID].minimum + 1,
 		mt_slots = clamp(mt_slots, 2, 32);
 	} else if (test_bit(ABS_MT_POSITION_X, dev->absbit)) {
 		mt_slots = 2;
@@ -2154,7 +2281,7 @@ int input_register_device(struct input_dev *dev)
 
 	if (dev->devres_managed) {
 		devres = devres_alloc(devm_input_device_unregister,
-					sizeof(*devres), GFP_KERNEL);
+				      sizeof(*devres), GFP_KERNEL);
 		if (!devres)
 			return -ENOMEM;
 
@@ -2222,7 +2349,19 @@ int input_register_device(struct input_dev *dev)
 			__func__, dev_name(&dev->dev));
 		devres_add(dev->dev.parent, devres);
 	}
+#ifdef CONFIG_LAST_TOUCH_EVENTS
+	if (input_device_is_touch(dev)) {
+		dev->touch_events = kzalloc(sizeof(struct touch_event_info), GFP_KERNEL);
+		if (dev->touch_events == NULL) {
+			pr_err("Touch event: alloc memory failed\n");
+		}
 
+		dev->touch_events->touch_is_pressed = false;
+		dev->touch_events->touch_event_num = 0;
+		dev->touch_events->touch_slot = 0;
+		dev->touch_events->finger_bitmap = 0;
+	}
+#endif
 	return 0;
 
 err_device_del:
@@ -2245,6 +2384,13 @@ EXPORT_SYMBOL(input_register_device);
  */
 void input_unregister_device(struct input_dev *dev)
 {
+#ifdef CONFIG_LAST_TOUCH_EVENTS
+	if (dev->touch_events) {
+		kfree(dev->touch_events);
+		dev->touch_events = NULL;
+	}
+#endif
+
 	if (dev->devres_managed) {
 		WARN_ON(devres_destroy(dev->dev.parent,
 					devm_input_device_unregister,
@@ -2449,16 +2595,16 @@ int input_get_new_minor(int legacy_base, unsigned int legacy_num,
 	 */
 	if (legacy_base >= 0) {
 		int minor = ida_simple_get(&input_ida,
-					legacy_base,
-					legacy_base + legacy_num,
-					GFP_KERNEL);
+					   legacy_base,
+					   legacy_base + legacy_num,
+					   GFP_KERNEL);
 		if (minor >= 0 || !allow_dynamic)
 			return minor;
 	}
 
 	return ida_simple_get(&input_ida,
-				INPUT_FIRST_DYNAMIC_DEV, INPUT_MAX_CHAR_DEVICES,
-				GFP_KERNEL);
+			      INPUT_FIRST_DYNAMIC_DEV, INPUT_MAX_CHAR_DEVICES,
+			      GFP_KERNEL);
 }
 EXPORT_SYMBOL(input_get_new_minor);
 
@@ -2490,7 +2636,7 @@ static int __init input_init(void)
 		goto fail1;
 
 	err = register_chrdev_region(MKDEV(INPUT_MAJOR, 0),
-					INPUT_MAX_CHAR_DEVICES, "input");
+				     INPUT_MAX_CHAR_DEVICES, "input");
 	if (err) {
 		pr_err("unable to register char major %d", INPUT_MAJOR);
 		goto fail2;
@@ -2498,10 +2644,8 @@ static int __init input_init(void)
 
 	return 0;
 
-fail2:
-	input_proc_exit();
-fail1:
-	class_unregister(&input_class);
+ fail2:	input_proc_exit();
+ fail1:	class_unregister(&input_class);
 	return err;
 }
 
@@ -2509,7 +2653,7 @@ static void __exit input_exit(void)
 {
 	input_proc_exit();
 	unregister_chrdev_region(MKDEV(INPUT_MAJOR, 0),
-				INPUT_MAX_CHAR_DEVICES);
+				 INPUT_MAX_CHAR_DEVICES);
 	class_unregister(&input_class);
 }
 

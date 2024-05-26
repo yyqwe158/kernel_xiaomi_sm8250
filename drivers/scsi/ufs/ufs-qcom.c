@@ -1601,7 +1601,7 @@ static int ufs_qcom_setup_clocks(struct ufs_hba *hba, bool on,
 		 * be in hibern8 state and the ref clock can be gated.
 		 */
 		if ((ufshcd_is_auto_hibern8_enabled(hba) ||
-		    !ufs_qcom_is_link_active(hba))) {
+		     !ufs_qcom_is_link_active(hba))) {
 			/* disable device ref_clk */
 			ufs_qcom_dev_ref_clk_ctrl(host, false);
 
@@ -2054,7 +2054,6 @@ __setup("androidboot.bootdevice=", get_android_boot_dev);
 static void ufs_qcom_parse_lpm(struct ufs_qcom_host *host)
 {
 	struct device_node *node = host->hba->dev->of_node;
-
 	host->disable_lpm = of_property_read_bool(node, "qcom,disable-lpm");
 	if (host->disable_lpm)
 		pr_info("%s: will disable all LPM modes\n", __func__);

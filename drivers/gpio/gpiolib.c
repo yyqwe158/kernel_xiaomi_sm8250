@@ -4437,11 +4437,11 @@ static int gpiolib_seq_show(struct seq_file *s, void *v)
 	struct device *parent;
 
 	if (!chip) {
-		seq_printf(s, "%s%s: (dangling chip)", (char *)s->private,
-			dev_name(&gdev->dev));
+        seq_printf(s, "%s%s: (dangling chip)", (char *)s->private,
+			   dev_name(&gdev->dev));
 		return 0;
 	}
-	seq_printf(s, "%s%s: GPIOs %d-%d", (char *)s->private,
+    seq_printf(s, "%s%s: GPIOs %d-%d", (char *)s->private,
 		   dev_name(&gdev->dev),
 		   gdev->base, gdev->base + gdev->ngpio - 1);
 	parent = chip->parent;
@@ -4453,7 +4453,7 @@ static int gpiolib_seq_show(struct seq_file *s, void *v)
 		seq_printf(s, ", %s", chip->label);
 	if (chip->can_sleep)
 		seq_printf(s, ", can sleep");
-	seq_printf(s, ":\n");
+	    seq_printf(s, ":\n");
 
 	if (chip->dbg_show)
 		chip->dbg_show(s, chip);
@@ -4488,6 +4488,7 @@ static int __init gpiolib_debugfs_init(void)
 	/* /sys/kernel/debug/gpio */
 	(void) debugfs_create_file("gpio", S_IFREG | S_IRUGO,
 				NULL, NULL, &gpiolib_operations);
+
 	return 0;
 }
 subsys_initcall(gpiolib_debugfs_init);

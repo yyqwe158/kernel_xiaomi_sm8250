@@ -571,14 +571,14 @@ static void msm_gpio_dbg_show_one(struct seq_file *s,
 	else
 		val = !!(io_reg & BIT(g->in_bit));
 
-	seq_printf(s, " %-8s: %-3s", g->name, is_out ? "out" : "in");
+    seq_printf(s, " %-8s: %-3s", g->name, is_out ? "out" : "in");
 	seq_printf(s, " %-4s func%d", val ? "high" : "low", func);
 	seq_printf(s, " %dmA", msm_regval_to_drive(drive));
 	if (pctrl->soc->pull_no_keeper)
 		seq_printf(s, " %s", pulls_no_keeper[pull]);
 	else
 		seq_printf(s, " %s", pulls_keeper[pull]);
-	seq_puts(s, "\n");
+	    seq_puts(s, "\n");
 }
 
 static void msm_gpio_dbg_show(struct seq_file *s, struct gpio_chip *chip)

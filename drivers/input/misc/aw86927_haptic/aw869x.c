@@ -30,7 +30,6 @@
 #include <linux/syscalls.h>
 #include <linux/power_supply.h>
 #include <linux/pm_qos.h>
-#include <linux/vmalloc.h>
 #include "aw_haptic.h"
 #include  "ringbuffer.h"
 #include "aw_config.h"
@@ -1306,7 +1305,6 @@ static int aw869x_haptic_rtp_init(struct aw869x *aw869x)
 			buf_len = read_rb(aw869x_rtp->data,  period_size);
 			aw869x_i2c_writes(aw869x, AW869X_REG_RTP_DATA,
 					  aw869x_rtp->data, buf_len);
-			aw869x->rtp_cnt += buf_len;
 			if (buf_len < period_size) {
 				aw_info("%s: custom rtp update complete\n", __func__);
 				aw869x->rtp_cnt = 0;
@@ -2548,7 +2546,6 @@ irqreturn_t aw869x_irq(int irq, void *data)
 							  AW869X_REG_RTP_DATA,
 							  aw869x_rtp->data,
 							  buf_len);
-					aw869x->rtp_cnt += buf_len;
 					if (buf_len < period_size) {
 						aw_info("%s: rtp update complete\n",
 							__func__);

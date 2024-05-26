@@ -40,6 +40,7 @@
 #include "aw86927.h"
 #include "aw_config.h"
 
+
 #define AW86927_BROADCAST_ADDR			(0x00)
 #define AW86927_LEFT_CHIP_ADDR			(0x5A)
 #define AW86927_RIGHT_CHIP_ADDR			(0x5B)
@@ -51,8 +52,6 @@ static int aw86927_haptic_play_mode(struct aw86927 *aw86927,
 static void aw86927_haptic_play_go(struct aw86927 *aw86927);
 static int aw86927_set_base_addr(struct aw86927 *aw86927);
 static int aw86927_haptic_stop(struct aw86927 *aw86927);
-static int aw86927_haptic_vbat_mode_config(struct aw86927 *aw86927,
-					   unsigned char flag);
 /******************************************************
  *
  * variable
@@ -304,6 +303,7 @@ static int aw86927_haptic_read_lra_f0(struct aw86927 *aw86927)
 	if (!f0_reg) {
 		aw_err("%s didn't get lra f0 because f0_reg value is 0!\n",
 			__func__);
+		aw86927->f0 = 0;
 		aw86927->f0_cali_status = false;
 		return ret;
 	}
@@ -577,34 +577,16 @@ static void aw86927_haptic_trig3_param_config(struct aw86927 *aw86927)
 	}
 }
 
-int aw86927_check_qualify(struct awinic *awinic)
+int aw86927_check_qualify(struct aw86927 *aw86927)
 {
-	unsigned char reg_val[3] = {0};
+	int ret = -1;
+	unsigned char reg_val = 0;
 
-	aw_info("%s enter!\n", __func__);
-	aw_i2c_read(awinic, AW86927_REG_EFCFG6, &reg_val[0]);
-	aw_i2c_read(awinic, AW86927_REG_EFCFG7, &reg_val[1]);
-	aw_i2c_read(awinic, AW86927_REG_EFCFG8, &reg_val[2]);
-	if (!(reg_val[0] & AW86927_BIT_EFCFG6_MASK)) {
+	ret = aw86927_i2c_read(aw86927, AW86927_REG_EFCFG6, &reg_val);
+	if (ret < 0)
+		return ret;
+	if (!(reg_val & AW86927_BIT_EFCFG6_MASK)) {
 		aw_err("unqualified chip!");
-		return -ERANGE;
-	}
-	if ((reg_val[1] & (~AW86927_BIT_EFCFG7_RESERVED_MASK)) ||
-	    (reg_val[2] & (~AW86927_BIT_EFCFG8_EF_TRM_BST_IPEAK_MASK))) {
-		aw_i2c_write(awinic, AW86927_REG_SYSCTRL3, 0x16);
-		aw_i2c_write(awinic, AW86927_REG_TMCFG,
-			     AW86927_BIT_TMCFG_TM_UNLOCK);
-		reg_val[0] = AW86927_BIT_EFCFG1_INIT_VAL;
-		aw_i2c_write(awinic, AW86927_REG_EFCFG1, reg_val[0]);
-		usleep_range(2500, 3000);
-		aw_i2c_write(awinic, AW86927_REG_TMCFG,
-			     AW86927_BIT_TMCFG_TM_LOCK);
-		aw_i2c_write(awinic, AW86927_REG_SYSCTRL3, 0x12);
-	}
-	aw_i2c_read(awinic, AW86927_REG_EFCFG7, &reg_val[1]);
-	aw_i2c_read(awinic, AW86927_REG_EFCFG8, &reg_val[2]);
-	if ((reg_val[1] & (~AW86927_BIT_EFCFG7_RESERVED_MASK)) ||
-	    (reg_val[2] & (~AW86927_BIT_EFCFG8_EF_TRM_BST_IPEAK_MASK))) {
 		return -ERANGE;
 	}
 	return 0;
@@ -936,7 +918,6 @@ static int aw86927_haptic_cont_get_f0(struct aw86927 *aw86927)
 	aw86927_i2c_write_bits(aw86927, AW86927_REG_DETCFG2,
 		   AW86927_BIT_DETCFG2_D2S_GAIN_MASK,
 		   AW86927_BIT_DETCFG2_D2S_GAIN_40);
-	aw86927_haptic_vbat_mode_config(aw86927, AW86927_VBAT_HW_ADJUST_MODE);
 	/* f0 calibrate work mode */
 	aw86927_haptic_play_mode(aw86927, AW86927_CONT_MODE);
 	/* enable f0 detect */
@@ -987,7 +968,6 @@ static int aw86927_haptic_cont_get_f0(struct aw86927 *aw86927)
 		aw_err("%s enter standby mode failed, stop reading f0!\n",
 			__func__);
 	}
-	aw86927_haptic_vbat_mode_config(aw86927, AW86927_VBAT_SW_ADJUST_MODE);
 	/* restore d2s_gain config */
 	aw86927_i2c_write_bits(aw86927, AW86927_REG_DETCFG2,
 			       AW86927_BIT_DETCFG2_D2S_GAIN_MASK,
@@ -1266,13 +1246,6 @@ static void aw86927_haptic_misc_para_init(struct aw86927 *aw86927)
 	/* Unlock register */
 	aw86927_i2c_write(aw86927, AW86927_REG_TMCFG,
 			  AW86927_BIT_TMCFG_TM_UNLOCK);
-
-	aw86927_i2c_write_bits(aw86927, AW86927_REG_DETCFG1,
-			       AW86927_BIT_DETCFG1_VBAT_REF_MASK,
-			       AW86927_BIT_DETCFG1_VBAT_REF_4P2V);
-
-	aw86927_i2c_write(aw86927, AW86927_REG_ANACFG11,
-			  AW86927_BIT_ANACFG11_INIT_VAL);
 
 	aw86927_i2c_write(aw86927, AW86927_REG_SYSCTRL5,
 			  AW86927_BIR_SYSCTRL5_INIT_VAL);
@@ -4002,7 +3975,6 @@ static int aw86927_haptic_rtp_play(struct aw86927 *aw86927)
 			buf_len = read_rb(aw86927_rtp->data,  period_size);
 			aw86927_i2c_writes(aw86927, AW86927_REG_RTPDATA,
 					   aw86927_rtp->data, buf_len);
-			aw86927->rtp_cnt += buf_len;
 			if (buf_len < period_size) {
 				aw_info("%s: custom rtp update complete\n",
 					__func__);
@@ -4279,7 +4251,6 @@ irqreturn_t aw86927_irq(int irq, void *data)
 						AW86927_REG_RTPDATA,
 						aw86927_rtp->data,
 						buf_len);
-				aw86927->rtp_cnt += buf_len;
 				if (buf_len < period_size) {
 					aw_info("%s: rtp update complete\n",
 						__func__);
@@ -4386,8 +4357,7 @@ int aw86927_haptic_init(struct aw86927 *aw86927)
 	aw86927_haptic_set_bst_peak_cur(aw86927, AW86927_DEFAULT_PEAKCUR);
 	aw86927_haptic_swicth_motor_protect_config(aw86927, AW_PROTECT_EN, AW_PROTECT_VAL);
 	aw86927_haptic_auto_bst_enable(aw86927, false);
-	aw86927_haptic_auto_break_mode(aw86927, false);
-	aw86927_haptic_vbat_mode_config(aw86927, AW86927_VBAT_SW_ADJUST_MODE);
+	aw86927_haptic_vbat_mode_config(aw86927, AW86927_VBAT_HW_ADJUST_MODE);
 	mutex_unlock(&aw86927->lock);
 	/* f0 calibration */
 #ifndef USE_CONT_F0_CALI

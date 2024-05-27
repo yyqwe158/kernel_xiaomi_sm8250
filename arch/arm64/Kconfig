@@ -1692,3 +1692,7 @@ config HWCONF_MANAGER
 	help
          It provides all kinds of components configuration information and
          monitor values.
+
+config USB_SPEEDUP
+	bool "usb3.0 speed up"
+	default n

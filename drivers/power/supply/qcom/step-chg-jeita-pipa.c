@@ -296,7 +296,7 @@ static int get_step_chg_jeita_setting_from_profile(struct step_chg_info *chip)
 		return -EBUSY;
 
 	profile_node = of_batterydata_get_best_profile(batt_node,
-					batt_id_ohms / 1000, NULL);
+					batt_id_ohms / 1000, "M82_sunwoda_8840mah");
 	if (IS_ERR(profile_node))
 		return PTR_ERR(profile_node);
 
@@ -562,10 +562,8 @@ static int get_val(struct range_data *range, int hysteresis, int current_index,
 			 * Stay in the current index, threshold is not higher
 			 * by hysteresis amount
 			 */
-			if (*new_index < 5) {
-				*new_index = current_index;
-				*val = range[current_index].value;
-			}
+			*new_index = current_index;
+			*val = range[current_index].value;
 		}
 	} else if (*new_index == current_index - 1) {
 		if (threshold > range[*new_index].high_threshold - hysteresis) {
@@ -573,10 +571,8 @@ static int get_val(struct range_data *range, int hysteresis, int current_index,
 			 * stay in the current index, threshold is not lower
 			 * by hysteresis amount
 			 */
-			if (*new_index >= 4) {
-				*new_index = current_index;
-				*val = range[current_index].value;
-			}
+			*new_index = current_index;
+			*val = range[current_index].value;
 		}
 	}
 	return 0;
@@ -760,6 +756,7 @@ update_time:
 	return 0;
 }
 
+/*
 #define FFC_ITERM_TEMP 350
 #define FFC_ITERM_TEMP_HYST 20
 static void handle_chg_iterm(struct step_chg_info *chip, int temp)
@@ -796,7 +793,7 @@ static void handle_chg_iterm(struct step_chg_info *chip, int temp)
 
 	return;
 }
-
+*/
 static int handle_fast_charge(struct step_chg_info *chip, int temp)
 {
 	union power_supply_propval pval = {0, };
@@ -1033,7 +1030,7 @@ static int handle_jeita(struct step_chg_info *chip)
 		goto set_jeita_fv;
 
 	handle_fast_charge(chip, temp);
-	handle_chg_iterm(chip, temp);
+	// handle_chg_iterm(chip, temp);
 
 	/*
 	 * If JEITA float voltage is same as max-vfloat of battery then
@@ -1225,7 +1222,6 @@ int qcom_step_chg_init(struct device *dev,
 		return -EINVAL;
 	}
 
-    pr_info("enter dagu jeita init! \n");
 
 	chip = devm_kzalloc(dev, sizeof(*chip), GFP_KERNEL);
 	if (!chip)
@@ -1286,7 +1282,6 @@ int qcom_step_chg_init(struct device *dev,
 
 	the_chip = chip;
 
-    pr_info("end dagu jeita init! \n");
 
 	return 0;
 

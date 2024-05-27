@@ -86,13 +86,6 @@ enum {
 	NU2105,
 };
 
-static int bq2597x_mode_data[] = {
-	[BQ25970_STDALONE] = BQ25970_STDALONE,
-	[BQ25970_MASTER] = BQ25970_ROLE_MASTER,
-	[BQ25970_SLAVE] = BQ25970_ROLE_SLAVE,
-};
-
-
 #define	BAT_OVP_ALARM		BIT(7)
 #define BAT_OCP_ALARM		BIT(6)
 #define	BUS_OVP_ALARM		BIT(5)
@@ -154,9 +147,9 @@ static int bq2597x_mode_data[] = {
 
 #define bq_err(fmt, ...)								\
 do {											\
-	if (bq->mode == BQ25970_ROLE_MASTER)						\
+	if (bq->dev_role == BQ25970_ROLE_MASTER)						\
 		printk(KERN_ERR "[bq2597x-MASTER]:%s:" fmt, __func__, ##__VA_ARGS__);	\
-	else if (bq->mode == BQ25970_ROLE_SLAVE)					\
+	else if (bq->dev_role == BQ25970_ROLE_SLAVE)					\
 		printk(KERN_ERR "[bq2597x-SLAVE]:%s:" fmt, __func__, ##__VA_ARGS__);	\
 	else										\
 		printk(KERN_ERR "[bq2597x-STANDALONE]:%s:" fmt, __func__, ##__VA_ARGS__);\
@@ -164,9 +157,9 @@ do {											\
 
 #define bq_info(fmt, ...)								\
 do {											\
-	if (bq->mode == BQ25970_ROLE_MASTER)						\
+	if (bq->dev_role == BQ25970_ROLE_MASTER)						\
 		printk(KERN_INFO "[bq2597x-MASTER]:%s:" fmt, __func__, ##__VA_ARGS__);	\
-	else if (bq->mode == BQ25970_ROLE_SLAVE)					\
+	else if (bq->dev_role == BQ25970_ROLE_SLAVE)					\
 		printk(KERN_INFO "[bq2597x-SLAVE]:%s:" fmt, __func__, ##__VA_ARGS__);	\
 	else										\
 		printk(KERN_INFO "[bq2597x-STANDALONE]:%s:" fmt, __func__, ##__VA_ARGS__);\
@@ -174,9 +167,9 @@ do {											\
 
 #define bq_dbg(fmt, ...)								\
 do {											\
-	if (bq->mode == BQ25970_ROLE_MASTER)						\
+	if (bq->dev_role == BQ25970_ROLE_MASTER)						\
 		printk(KERN_DEBUG "[bq2597x-MASTER]:%s:" fmt, __func__, ##__VA_ARGS__);	\
-	else if (bq->mode == BQ25970_ROLE_SLAVE)					\
+	else if (bq->dev_role == BQ25970_ROLE_SLAVE)					\
 		printk(KERN_DEBUG "[bq2597x-SLAVE]:%s:" fmt, __func__, ##__VA_ARGS__);	\
 	else										\
 		printk(KERN_DEBUG "[bq2597x-STANDALONE]:%s:" fmt, __func__, ##__VA_ARGS__);\
@@ -248,6 +241,7 @@ struct bq2597x {
 
 	int chip_vendor;
 	int mode;
+	unsigned int dev_role;
 
 	struct mutex data_lock;
 	struct mutex i2c_rw_lock;
@@ -1469,7 +1463,7 @@ static int bq2597x_detect_device(struct bq2597x *bq)
 		bq->part_no = (data & BQ2597X_DEV_ID_MASK);
 		bq->part_no >>= BQ2597X_DEV_ID_SHIFT;
 
-		pr_err("detect device:%d\n", data);
+		bq_info("detect device:%d\n", data);
 		if (data == SC8551_DEVICE_ID || data == SC8551A_DEVICE_ID)
 			bq->chip_vendor = SC8551;
 		else if (data == NU2105_DEVICE_ID)
@@ -1481,6 +1475,39 @@ static int bq2597x_detect_device(struct bq2597x *bq)
 	}
 
 	return ret;
+}
+
+static struct of_device_id bq2597x_charger_match_table[] = {
+	{
+		.compatible = "ti,bq2597x-standalone",
+		.data = (void *)BQ25970_STDALONE,
+	},
+	{
+		.compatible = "ti,bq2597x-master",
+		.data = (void *)BQ25970_ROLE_MASTER,
+	},
+	{
+		.compatible = "ti,bq2597x-slave",
+		.data = (void *)BQ25970_ROLE_SLAVE,
+	},
+	{},
+};
+//MODULE_DEVICE_TABLE(of, bq2597x_charger_match_table);
+
+static int bq2597x_get_dev_role(struct i2c_client *client)
+{
+	const struct of_device_id *of_id;
+
+	of_id = of_match_device(of_match_ptr(bq2597x_charger_match_table), &client->dev);
+	if (of_id == NULL) {
+		dev_err(&client->dev, "%s: fail to matched of_device_id\n", __func__);
+		return -EINVAL;
+	}
+
+	dev_info(&client->dev, "%s: matched to %s, dev_role: %d.\n",
+			__func__, of_id->compatible, (int)of_id->data);
+
+	return (int)of_id->data;
 }
 
 static int bq2597x_parse_dt(struct bq2597x *bq, struct device *dev)
@@ -1613,7 +1640,7 @@ static int bq2597x_parse_dt(struct bq2597x *bq, struct device *dev)
 		return ret;
 	}*/
 
-
+    bq_info("Verity dtsi: %d\n",bq->cfg->ac_ovp_th);
 	return 0;
 }
 
@@ -1866,7 +1893,7 @@ static int bq2597x_init_device(struct bq2597x *bq)
 	}
 
 	bq2597x_enable_wdt(bq, false);
-	bq2597x_set_ss_timeout(bq, 100000);
+	bq2597x_set_ss_timeout(bq, 1500);
 	bq2597x_set_ibus_ucp_thr(bq, 300);
 	bq2597x_enable_ucp(bq,1);
 	bq2597x_set_sense_resistor(bq, bq->cfg->sense_r_mohm);
@@ -1953,7 +1980,7 @@ static ssize_t bq2597x_show_diff_ti_bus_current(struct device *dev,struct device
 	union power_supply_propval pval = {
 		0,
 	};
-	if(bq->mode == BQ25970_ROLE_MASTER){
+	if(bq->dev_role == BQ25970_ROLE_MASTER){
 		/*get bq2597x_slave ti_bus_current*/
 		if(!bq2597x_slave){
 			bq2597x_slave = power_supply_get_by_name("bq2597x-slave");
@@ -1980,7 +2007,7 @@ static ssize_t bq2597x_show_diff_ti_bus_current(struct device *dev,struct device
 			diff_ti_bus_current = ti_bus_current_master - ti_bus_current_slave;
 		else
 			diff_ti_bus_current = ti_bus_current_slave - ti_bus_current_master;
-	} else if (bq->mode == BQ25970_ROLE_SLAVE) {
+	} else if (bq->dev_role == BQ25970_ROLE_SLAVE) {
 		diff_ti_bus_current = -1;
 	}
 	len = snprintf(buf, 1024, "%d\n", diff_ti_bus_current);
@@ -2142,17 +2169,7 @@ static int bq2597x_charger_get_property(struct power_supply *psy,
 		val->intval = 0;
 		break;
 	case POWER_SUPPLY_PROP_MODEL_NAME:
-		ret = bq2597x_get_work_mode(bq, &bq->mode);
-		if (ret) {
-			val->strval = "unknown";
-		} else {
-			if (bq->mode == BQ25970_ROLE_MASTER)
-				val->strval = "bq2597x-master";
-			else if (bq->mode == BQ25970_ROLE_SLAVE)
-				val->strval = "bq2597x-slave";
-			else
-				val->strval = "bq2597x-standalone";
-		}
+		val->strval = bq->psy_desc.name;
 		break;
 	case POWER_SUPPLY_PROP_TI_BUS_ERROR_STATUS:
 		val->intval = bq2597x_check_vbus_error_status(bq);
@@ -2216,9 +2233,9 @@ static int bq2597x_psy_register(struct bq2597x *bq)
 	bq->psy_cfg.drv_data = bq;
 	bq->psy_cfg.of_node = bq->dev->of_node;
 
-	if (bq->mode == BQ25970_ROLE_MASTER)
+	if (bq->dev_role == BQ25970_ROLE_MASTER)
 		bq->psy_desc.name = "bq2597x-master";
-	else if (bq->mode == BQ25970_ROLE_SLAVE)
+	else if (bq->dev_role == BQ25970_ROLE_SLAVE)
 		bq->psy_desc.name = "bq2597x-slave";
 	else
 		bq->psy_desc.name = "bq2597x-standalone";
@@ -2471,9 +2488,9 @@ static const struct file_operations reg_debugfs_ops = {
 
 static void create_debugfs_entry(struct bq2597x *bq)
 {
-	if (bq->mode == BQ25970_ROLE_MASTER)
+	if (bq->dev_role == BQ25970_ROLE_MASTER)
 		bq->debug_root = debugfs_create_dir("bq2597x-master", NULL);
-	else if (bq->mode == BQ25970_ROLE_SLAVE)
+	else if (bq->dev_role == BQ25970_ROLE_SLAVE)
 		bq->debug_root = debugfs_create_dir("bq2597x-slave", NULL);
 	else
 		bq->debug_root = debugfs_create_dir("bq2597x-standalone", NULL);
@@ -2497,42 +2514,68 @@ static void create_debugfs_entry(struct bq2597x *bq)
 	}
 }
 
-static struct of_device_id bq2597x_charger_match_table[] = {
-	{
-		.compatible = "ti,bq2597x-standalone",
-		.data = &bq2597x_mode_data[BQ25970_STDALONE],
-	},
-	{
-		.compatible = "ti,bq2597x-master",
-		.data = &bq2597x_mode_data[BQ25970_MASTER],
-	},
+#define SC8551_PART_INFO_REG			0x13
+static int try_to_find_i2c_regess(struct bq2597x *bq)
+{
+	uint8_t reg_set[] = {0x65, 0x66};
+	uint8_t ori_reg = bq->client->addr;
+	int i, ret = 0;
 
-	{
-		.compatible = "ti,bq2597x-slave",
-		.data = &bq2597x_mode_data[BQ25970_SLAVE],
-	},
-	{},
-};
-//MODULE_DEVICE_TABLE(of, bq2597x_charger_match_table);
+	for (i = 0; i < 2; i++) {
+		bq->client->addr = reg_set[i];
+		//info->regmap = devm_regmap_init_i2c(info->client, &SC8551_PART_INFO_REG);
+		ret = i2c_smbus_read_byte_data(bq->client, SC8551_PART_INFO_REG);
+		if (!IS_ERR_VALUE((unsigned long)ret)) {
+			bq_info("find to can be access regess(0x%02x)(ori=0x%02x).\n",
+					bq->client->addr, ori_reg);
+			//ln8000_soft_reset(info);
+			return 1;
+		} else {
+			bq_err("can't access regess(0x%02x)(ori=0x%02x).\n",
+					bq->client->addr, ori_reg);
+		}
+	}
 
+	bq->client->addr = ori_reg;
+	bq_info("retry (0x%02x).\n", bq->client->addr);
+	//info->regmap = devm_regmap_init_i2c(info->client, &ln8000_regmap_config);
+	ret = i2c_smbus_read_byte_data(bq->client, SC8551_PART_INFO_REG);
+	if (!IS_ERR_VALUE((unsigned long)ret)) {
+		bq_info("retry (0x%02x) can be access regess.\n", bq->client->addr);
+		//ln8000_soft_reset(info);
+		return 1;
+	}
+
+	return 0;
+}
 
 static int bq2597x_charger_probe(struct i2c_client *client,
 					const struct i2c_device_id *id)
 {
 	struct bq2597x *bq;
-	const struct of_device_id *match;
-	struct device_node *node = client->dev.of_node;
 	int ret;
-
+    bq_err("enter cp successfully-cxl");
 	bq = devm_kzalloc(&client->dev, sizeof(struct bq2597x), GFP_KERNEL);
 	if (!bq)
 		return -ENOMEM;
 
 	bq->dev = &client->dev;
-
 	bq->client = client;
-	i2c_set_clientdata(client, bq);
 
+	/* detect device on connected i2c bus */
+	ret = i2c_smbus_read_byte_data(client, SC8551_PART_INFO_REG);
+	if (IS_ERR_VALUE((unsigned long)ret)) {
+		bq_err("fail to detect sc8551 on i2c_bus(addr=0x%x), retry\n", client->addr);
+		ret = try_to_find_i2c_regess(bq);
+
+		if (!ret) {
+			bq_err("fail to detect sc8551 on i2c_bus(addr=0x%x)\n", client->addr);
+			return -ENODEV;
+		}
+	}
+	bq_info("device id=0x%x\n", ret);
+
+	i2c_set_clientdata(client, bq);
 	mutex_init(&bq->i2c_rw_lock);
 	mutex_init(&bq->data_lock);
 	mutex_init(&bq->charging_disable_lock);
@@ -2540,6 +2583,12 @@ static int bq2597x_charger_probe(struct i2c_client *client,
 
 	bq->resume_completed = true;
 	bq->irq_waiting = false;
+
+	bq->dev_role = bq2597x_get_dev_role(client);
+	if (IS_ERR_VALUE((unsigned long)bq->dev_role)) {
+		kfree(bq);
+		return -EINVAL;
+	}
 
 	ret = bq2597x_detect_device(bq);
 	if (ret) {
@@ -2556,19 +2605,7 @@ static int bq2597x_charger_probe(struct i2c_client *client,
 			}
 		}
 	}
-
-	match = of_match_node(bq2597x_charger_match_table, node);
-	if (match == NULL) {
-		bq_err("device tree match not found!\n");
-		return -ENODEV;
-	}
-
 	bq2597x_get_work_mode(bq, &bq->mode);
-
-	if (bq->mode !=  *(int *)match->data) {
-		bq_err("device operation mode mismatch with dts configuration\n");
-		return -EINVAL;
-	}
 
 	ret = bq2597x_parse_dt(bq, &client->dev);
 	if (ret)
@@ -2611,9 +2648,6 @@ static int bq2597x_charger_probe(struct i2c_client *client,
 	}
 
 	/* determine_initial_status(bq); */
-
-	bq_info("bq2597x probe successfully, Part Num:%d\n!",
-				bq->part_no);
 
 	return 0;
 

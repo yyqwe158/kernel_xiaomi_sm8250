@@ -87,3 +87,4 @@ obj-$(CONFIG_GPIO_TESTING_MODE)	+= gpio-testing-mode.o
 obj-$(CONFIG_MI_GAMEKEY)        += mi_gamekey.o
 
 obj-y                           += qrc/
+obj-$(CONFIG_MMHARDWARE_OTHER_DETECTION) += mmhardware_others.o

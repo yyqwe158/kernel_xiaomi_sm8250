@@ -105,13 +105,12 @@ enum print_reason {
 #define QC3P5_VOTER			"QC3P5_VOTER"
 #define FCC_MAX_QC3P5_VOTER		"FCC_MAX_QC3P5_VOTER"
 #define NON_PPS_PD_FCC_VOTER		"NON_PPS_PD_FCC_VOTER"
-
+#define BATT_CHARGE_IC_VOTER		"BATT_CHARGE_IC_VOTER"
 /* thermal micros */
 #define MAX_TEMP_LEVEL		16
 /* defined for distinguish qc class_a and class_b */
 #define VOL_THR_FOR_QC_CLASS_AB		12400000
-#define VOL_THR_FOR_QC_CLASS_AB_DAGU	12300000
-#define VOL_THR_FOR_QC_CLASS_AB_PSYCHE	12300000
+#define VOL_THR_FOR_QC_CLASS_AB_PIPA       12300000
 #define COMP_FOR_LOW_RESISTANCE_CABLE	100000
 #define QC_CLASS_A_CURRENT_UA		3600000
 #define HVDCP_CLASS_A_MAX_UA		2500000
@@ -146,11 +145,12 @@ enum print_reason {
 #define SDP_CURRENT_UA			500000
 #define CDP_CURRENT_UA			1500000
 
-#ifdef CONFIG_QPNP_SMB5_DAGU
+#ifdef CONFIG_QPNP_SMB5_PIPA
 #define DCP_CURRENT_UA			2000000
 #else
 #define DCP_CURRENT_UA			1600000
 #endif
+
 
 #ifdef CONFIG_RX1619_REMOVE
 #define HVDCP_START_CURRENT_UA		500000
@@ -569,6 +569,7 @@ struct smb_iio {
 	struct iio_channel	*die_temp_chan;
 	struct iio_channel	*skin_temp_chan;
 	struct iio_channel	*smb_temp_chan;
+	struct iio_channel      *batt_slave_temp_chan;
 };
 
 struct smb_charger {
@@ -580,6 +581,7 @@ struct smb_charger {
 	struct smb_iio		iio;
 	int			*debug_mask;
 	int			pd_disabled;
+	int			chip_ok_count;
 	enum smb_mode		mode;
 	struct smb_chg_freq	chg_freq;
 	int			otg_delay_ms;
@@ -588,7 +590,7 @@ struct smb_charger {
 	u32			sdam_base;
 	bool			pd_not_supported;
 	bool			batt_verified;
-
+        int                     fake_shipmode;
 	/* locks */
 	struct mutex		smb_lock;
 	struct mutex		ps_change_lock;
@@ -618,7 +620,7 @@ struct smb_charger {
 	struct power_supply		*cp_psy;
 	struct power_supply             *cp_sec_psy;
 	struct power_supply             *ps_psy;
-#ifdef CONFIG_BATT_VERIFY_BY_DS28E16
+#ifdef CONFIG_BATT_VERIFY_BY_DS28E16_PIPA
 	struct power_supply		*batt_verify_psy;
 #endif
 	enum power_supply_type		real_charger_type;
@@ -627,7 +629,7 @@ struct smb_charger {
 
 	/* notifiers */
 	struct notifier_block	nb;
-
+        struct  notifier_block reboot_notifier;
 	/* parallel charging */
 	struct parallel_params	pl;
 	int smartBatVal;
@@ -716,6 +718,7 @@ struct smb_charger {
 	struct delayed_work	clean_cp_to_sw_work;
 	struct delayed_work     check_init_boot;
 	struct delayed_work     check_sc8551_work;
+	struct delayed_work	check_batt_missing_work;
 
 	struct alarm		lpd_recheck_timer;
 	struct alarm		moisture_protection_alarm;
@@ -817,6 +820,7 @@ struct smb_charger {
 	int			smb_temp;
 	int			skin_temp;
 	int			connector_temp;
+	int			batt_slave_temp;
 	int			connector_temp_pre;
 	int			thermal_status;
 	int			main_fcc_max;
@@ -1168,6 +1172,7 @@ int smblib_get_prop_input_current_max(struct smb_charger *chg,
 int smblib_set_prop_thermal_overheat(struct smb_charger *chg,
 			       int therm_overheat);
 int smblib_get_prop_connector_temp(struct smb_charger *chg);
+int smblib_get_prop_batt_slave_temp(struct smb_charger *chg);
 int smblib_get_skin_temp_status(struct smb_charger *chg);
 int smblib_get_prop_vph_voltage_now(struct smb_charger *chg,
 				union power_supply_propval *val);

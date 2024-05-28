@@ -47,7 +47,9 @@
 #include "debug.h"
 #include "xhci.h"
 
+#ifndef CONFIG_NO_PS_USB3
 #include "../pd/ps5169.h"
+#endif
 
 #define SDP_CONNETION_CHECK_TIME 10000 /* in ms */
 #define EXTCON_SYNC_EVENT_TIMEOUT_MS 1500 /* in ms */
@@ -4401,8 +4403,10 @@ static int dwc3_otg_start_host(struct dwc3_msm *mdwc, int on)
 		schedule_delayed_work(&mdwc->perf_vote_work,
 				msecs_to_jiffies(1000 * PM_QOS_SAMPLE_SEC));
 
+#ifndef CONFIG_NO_PS_USB3
 		if (!has_dp_flag)
 			ps5169_cfg_usb();
+#endif
 
 	} else {
 		dev_err(mdwc->dev, "%s: turn off host\n", __func__);
@@ -4524,8 +4528,10 @@ static int dwc3_otg_start_peripheral(struct dwc3_msm *mdwc, int on)
 		schedule_delayed_work(&mdwc->perf_vote_work,
 				msecs_to_jiffies(1000 * PM_QOS_SAMPLE_SEC));
 
+#ifndef CONFIG_NO_PS_USB3
 		if (!has_dp_flag)
 			ps5169_cfg_usb();
+#endif
 
 	} else {
 		dev_err(mdwc->dev, "%s: turn off gadget %s\n",

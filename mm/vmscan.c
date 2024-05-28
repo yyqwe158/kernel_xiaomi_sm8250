@@ -56,7 +56,9 @@
 
 #include <linux/swapops.h>
 #include <linux/balloon_compaction.h>
+#ifdef CONFIG_RTMM
 #include <linux/rtmm.h>
+#endif
 #include <linux/mi_reclaim.h>
 
 #include "internal.h"
@@ -2366,9 +2368,11 @@ static void get_scan_count(struct lruvec *lruvec, struct mem_cgroup *memcg,
 		goto out;
 	}
 
+#ifdef CONFIG_RTMM
 	if (unlikely(rtmm_reclaim(current->comm))) {
 		swappiness = rtmm_reclaim_swappiness();
 	}
+#endif
 
 	/*
 	 * Global reclaim will swap to prevent OOM even with no
@@ -2445,11 +2449,14 @@ static void get_scan_count(struct lruvec *lruvec, struct mem_cgroup *memcg,
 	 */
 	if (!IS_ENABLED(CONFIG_BALANCE_ANON_FILE_RECLAIM) &&
 	    !inactive_list_is_low(lruvec, true, sc, false) &&
+#ifdef CONFIG_RTMM
 	    lruvec_lru_size(lruvec, LRU_INACTIVE_FILE, sc->reclaim_idx) >> sc->priority && (swappiness != 200)) {
+#else
+	    lruvec_lru_size(lruvec, LRU_INACTIVE_FILE, sc->reclaim_idx) >> sc->priority) {
+#endif
 		scan_balance = SCAN_FILE;
 		goto out;
 	}
-
 	scan_balance = SCAN_FRACT;
 
 	/*

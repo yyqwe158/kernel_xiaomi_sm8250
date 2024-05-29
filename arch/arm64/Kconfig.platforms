@@ -494,6 +494,12 @@ config BOARD_MUNCH
 	help
 	  This enables support for Xiaomi Redmi K40S / POCO F4.
 
+config BOARD_PIPA
+	bool "Pipa platform"
+	select BOARD_XIAOMI_SM8250
+	help
+	  This enables support for Xiaomi Pad 6.
+
 config BOARD_PSYCHE
 	bool "Psyche platform"
 	select BOARD_XIAOMI_SM8250

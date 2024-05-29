@@ -76,7 +76,7 @@
 
         qcom,mdss-dsi-display-timings {
             timing@0{
-                qcom,mdss-dsi-panel-framerate = <120>;
+                qcom,mdss-dsi-panel-framerate = <144>;
                 qcom,mdss-dsi-panel-width = <900>; // 1600/2
                 qcom,mdss-dsi-panel-height = <2880>;
                 qcom,mdss-dsi-h-pulse-width = <2>;

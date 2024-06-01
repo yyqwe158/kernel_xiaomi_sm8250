@@ -1,5 +1,5 @@
 &mdss_mdp {
-	dsi_j2s_mp_42_02_0b_dsc_cmd: qcom,mdss_dsi_j2s_mp_42_02_0b_dsc_cmd {
+	dsi_j2_mp_42_02_0b_post_dsc_cmd: qcom,mdss_dsi_j2_mp_42_02_0b_post_dsc_cmd {
 		qcom,mdss-dsi-panel-name = "xiaomi 42 02 0b cmd mode dsc dsi panel";
 		qcom,mdss-dsi-panel-type = "dsi_cmd_mode";
 		qcom,mdss-dsi-virtual-channel-id = <0>;
@@ -23,8 +23,8 @@
 		qcom,mdss-dsi-dma-trigger = "trigger_sw";
 		qcom,mdss-dsi-mdp-trigger = "none";
 		qcom,mdss-dsi-reset-sequence = <1 1>, <0 1>, <1 10>;
-		qcom,mdss-pan-physical-width-dimension = <71>;
-		qcom,mdss-pan-physical-height-dimension = <154>;
+		qcom,mdss-pan-physical-width-dimension = <710>;
+		qcom,mdss-pan-physical-height-dimension = <1537>;
 		qcom,mdss-dsi-te-pin-select = <1>;
 		qcom,mdss-dsi-wr-mem-start = <0x2c>;
 		qcom,mdss-dsi-wr-mem-continue = <0x3c>;
@@ -225,7 +225,7 @@
 	};
 };
 
-&dsi_j2s_mp_42_02_0b_dsc_cmd {
+&dsi_j2_mp_42_02_0b_post_dsc_cmd {
 	mi,panel-id = <0x4A32 0x00420201>;
 	mi,feature-enabled;
 	mi,mdss-dsi-bl-dcs-big-endian-type;

@@ -44,9 +44,6 @@
 #include <uapi/linux/dma-buf.h>
 #include <uapi/linux/magic.h>
 
-#define CREATE_TRACE_POINTS
-#include <trace/events/dmabuf.h>
-
 static inline int is_dma_buf_file(struct file *);
 
 struct dma_buf_list {
@@ -105,7 +102,6 @@ static void dma_buf_release(struct dentry *dentry)
 {
 	struct dma_buf *dmabuf;
 	int dtor_ret = 0;
-	pid_t tgid = task_tgid_nr(current);
 
 	dmabuf = dentry->d_fsdata;
 
@@ -132,8 +128,6 @@ static void dma_buf_release(struct dentry *dentry)
 	else
 		pr_warn_ratelimited("Leaking dmabuf %s because destructor failed error:%d\n",
 				    dmabuf->name, dtor_ret);
-
-	trace_dma_buf_release(inode, file, tgid);
 
 	dma_buf_ref_destroy(dmabuf);
 
@@ -183,7 +177,6 @@ static struct file_system_type dma_buf_fs_type = {
 static int dma_buf_mmap_internal(struct file *file, struct vm_area_struct *vma)
 {
 	struct dma_buf *dmabuf;
-	pid_t tgid = task_tgid_nr(current);
 
 	if (!is_dma_buf_file(file))
 		return -EINVAL;
@@ -194,7 +187,7 @@ static int dma_buf_mmap_internal(struct file *file, struct vm_area_struct *vma)
 	if (vma->vm_pgoff + vma_pages(vma) >
 	    dmabuf->size >> PAGE_SHIFT)
 		return -EINVAL;
-	trace_dma_buf_mmap_internal(file, vma, tgid);
+
 	return dmabuf->ops->mmap(dmabuf, vma);
 }
 
@@ -610,7 +603,6 @@ struct dma_buf *dma_buf_export(const struct dma_buf_export_info *exp_info)
 	struct file *file;
 	size_t alloc_size = sizeof(struct dma_buf);
 	int ret;
-	pid_t tgid = task_tgid_nr(current);
 
 	if (!exp_info->resv)
 		alloc_size += sizeof(struct reservation_object);
@@ -675,7 +667,6 @@ struct dma_buf *dma_buf_export(const struct dma_buf_export_info *exp_info)
 
 	mutex_lock(&db_list.lock);
 	list_add(&dmabuf->list_node, &db_list.head);
-	trace_dma_buf_export(exp_info, tgid);
 	mutex_unlock(&db_list.lock);
 
 	return dmabuf;
@@ -751,14 +742,11 @@ EXPORT_SYMBOL_GPL(dma_buf_get);
  */
 void dma_buf_put(struct dma_buf *dmabuf)
 {
-	pid_t tgid = task_tgid_nr(current);
-
 	if (WARN_ON(!dmabuf || !dmabuf->file))
 		return;
 
 	dma_buf_ref_mod(dmabuf, -1);
 	fput(dmabuf->file);
-	trace_dma_buf_put(dmabuf, tgid);
 }
 EXPORT_SYMBOL_GPL(dma_buf_put);
 
@@ -857,7 +845,6 @@ struct sg_table *dma_buf_map_attachment(struct dma_buf_attachment *attach,
 					enum dma_data_direction direction)
 {
 	struct sg_table *sg_table;
-	pid_t tgid = task_tgid_nr(current);
 
 	might_sleep();
 
@@ -865,7 +852,6 @@ struct sg_table *dma_buf_map_attachment(struct dma_buf_attachment *attach,
 		return ERR_PTR(-EINVAL);
 
 	sg_table = attach->dmabuf->ops->map_dma_buf(attach, direction);
-	trace_dma_buf_map_attachment(attach, direction, tgid);
 	if (!sg_table)
 		sg_table = ERR_PTR(-ENOMEM);
 
@@ -887,8 +873,6 @@ void dma_buf_unmap_attachment(struct dma_buf_attachment *attach,
 				struct sg_table *sg_table,
 				enum dma_data_direction direction)
 {
-	pid_t tgid = task_tgid_nr(current);
-
 	might_sleep();
 
 	if (WARN_ON(!attach || !attach->dmabuf || !sg_table))
@@ -896,7 +880,6 @@ void dma_buf_unmap_attachment(struct dma_buf_attachment *attach,
 
 	attach->dmabuf->ops->unmap_dma_buf(attach, sg_table,
 						direction);
-	trace_dma_buf_unmap_attachment(attach, sg_table, direction, tgid);
 }
 EXPORT_SYMBOL_GPL(dma_buf_unmap_attachment);
 
@@ -1263,7 +1246,6 @@ EXPORT_SYMBOL_GPL(dma_buf_mmap);
 void *dma_buf_vmap(struct dma_buf *dmabuf)
 {
 	void *ptr;
-	pid_t tgid = task_tgid_nr(current);
 
 	if (WARN_ON(!dmabuf))
 		return NULL;
@@ -1289,7 +1271,6 @@ void *dma_buf_vmap(struct dma_buf *dmabuf)
 
 	dmabuf->vmap_ptr = ptr;
 	dmabuf->vmapping_counter = 1;
-	trace_dma_buf_vmap(dmabuf, tgid);
 
 out_unlock:
 	mutex_unlock(&dmabuf->lock);
@@ -1304,8 +1285,6 @@ EXPORT_SYMBOL_GPL(dma_buf_vmap);
  */
 void dma_buf_vunmap(struct dma_buf *dmabuf, void *vaddr)
 {
-	pid_t tgid = task_tgid_nr(current);
-
 	if (WARN_ON(!dmabuf))
 		return;
 
@@ -1320,7 +1299,6 @@ void dma_buf_vunmap(struct dma_buf *dmabuf, void *vaddr)
 		dmabuf->vmap_ptr = NULL;
 	}
 	mutex_unlock(&dmabuf->lock);
-	trace_dma_buf_vunmap(dmabuf, vaddr, tgid);
 }
 EXPORT_SYMBOL_GPL(dma_buf_vunmap);
 

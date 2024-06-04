@@ -121,11 +121,11 @@ struct cam_ois_opcode {
 #ifdef CONFIG_BOARD_PSYCHE
 	uint32_t ois_get_data;
 #endif
-	uint8_t  fw_addr_type;
-	uint8_t  is_addr_increase;
-	uint8_t  is_addr_indata;
-        uint8_t  fwversion;
-        uint32_t fwchecksumsize;
+	uint8_t fw_addr_type;
+	uint8_t is_addr_increase;
+	uint8_t is_addr_indata;
+	uint8_t fwversion;
+	uint32_t fwchecksumsize;
 	uint32_t fwchecksum;
 } __attribute__((packed));
 
